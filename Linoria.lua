@@ -12,7 +12,7 @@ local MARGIN_X = 18
 local MARGIN_Y = 18
 local OFFSCREEN = 360
 local SLIDE_SPD = 12
-local FADE_SPD = 5
+local FADE_SPD = 2 -- slower fade
 local ACCENT_W = 3
 
 local C = {
@@ -31,21 +31,10 @@ local C = {
 local pool = {}
 local loopConn = nil
 
-local function vp()
-	return workspace.CurrentCamera.ViewportSize
-end
-
-local function targetX()
-	return vp().X - W - MARGIN_X
-end
-
-local function targetY(slot)
-	return MARGIN_Y + (slot - 1) * (H + PAD)
-end
-
-local function lerp(a, b, t)
-	return a + (b - a) * t
-end
+local function vp() return workspace.CurrentCamera.ViewportSize end
+local function targetX() return vp().X - W - MARGIN_X end
+local function targetY(slot) return MARGIN_Y + (slot - 1) * (H + PAD) end
+local function lerp(a, b, t) return a + (b - a) * t end
 
 local function newSquare(pos, size, color, filled, thickness, zi)
 	local s = Drawing.new("Square")
@@ -115,11 +104,9 @@ local function startLoop()
 	if loopConn then return end
 	loopConn = RunService.RenderStepped:Connect(function(dt)
 		local alive = false
-
 		for i = #pool, 1, -1 do
 			local n = pool[i]
-			local tx = targetX()
-			n.cx = lerp(n.cx, tx, math.min(dt * SLIDE_SPD, 1))
+			n.cx = lerp(n.cx, targetX(), math.min(dt * SLIDE_SPD, 1))
 			n.cy = lerp(n.cy, n.ty, math.min(dt * SLIDE_SPD, 1))
 
 			if n.phase == "in" then
@@ -176,7 +163,8 @@ local function Notify(title, message, duration, notifType)
 	table.insert(pool, n)
 	startLoop()
 
-	task.delay(duration, function()
+	task.spawn(function()
+		task.wait(duration)
 		if n and n.phase ~= "out" then
 			n.phase = "out"
 			startLoop()
