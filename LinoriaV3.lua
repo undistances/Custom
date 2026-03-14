@@ -26,7 +26,7 @@ local loopConn = nil
 
 local function vp() return workspace.CurrentCamera.ViewportSize end
 local function targetX() return vp().X - W - MARGIN_X end
-local function targetY(slot) return MARGIN_Y + (slot - 1) * (H + PAD) end
+local function targetY(slot) return vp().Y - MARGIN_Y - ((#pool - slot + 1) * (H + PAD)) end
 local function lerp(a, b, t) return a + (b - a) * t end
 
 local function newSquare(pos, size, color, filled, thickness, zi)
@@ -97,10 +97,12 @@ local function startLoop()
     if loopConn then return end
     loopConn = RunService.RenderStepped:Connect(function(dt)
         local toRemove = {}
+
         for i = #pool, 1, -1 do
             local n = pool[i]
             n.cx = lerp(n.cx, targetX(), math.min(dt * SLIDE_SPD, 1))
             n.cy = lerp(n.cy, n.ty, math.min(dt * SLIDE_SPD, 1))
+
             if n.phase == "in" then
                 n.alpha = math.min(n.alpha + dt * FADE_SPD, 1)
                 if n.alpha >= 0.99 then n.phase = "hold" end
@@ -110,18 +112,20 @@ local function startLoop()
                     toRemove[#toRemove + 1] = i
                 end
             end
+
             setAlpha(n.draw, n.alpha)
             setPos(n.draw, n.cx, n.cy)
         end
+
         for _, i in ipairs(toRemove) do
             destroy(pool[i].draw)
             table.remove(pool, i)
         end
-        if #toRemove > 0 then
-            for j, m in ipairs(pool) do
-                m.ty = targetY(j)
-            end
+
+        for j, m in ipairs(pool) do
+            m.ty = targetY(j)
         end
+
         if #pool == 0 then
             loopConn:Disconnect()
             loopConn = nil
@@ -134,14 +138,16 @@ local function Notify(title, message, duration, notifType)
     duration  = duration or 4
     title     = tostring(title or "Notification")
     message   = tostring(message or "")
+
     local accentColor = C.accent[notifType] or C.accent.info
-    local slot = #pool + 1
     local ix = targetX() + OFFSCREEN
-    local iy = targetY(slot)
+    local iy = targetY(#pool + 1)
+
     local d = spawnDraw(ix, iy)
     d.accent.Color = accentColor
     d.title.Text   = title
     d.msg.Text     = message
+
     local n = {
         draw  = d,
         cx    = ix,
@@ -150,8 +156,10 @@ local function Notify(title, message, duration, notifType)
         alpha = 0,
         phase = "in"
     }
+
     table.insert(pool, n)
     startLoop()
+
     task.spawn(function()
         task.wait(duration)
         if n and n.phase ~= "out" then
