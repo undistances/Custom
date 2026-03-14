@@ -1,7 +1,6 @@
 local RunService = game:GetService("RunService")
 
 local W, H = 290, 68
-local PAD = 10
 local MARGIN_X, MARGIN_Y = 18, 18
 local OFFSCREEN = 360
 local SLIDE_SPD = 12
@@ -26,7 +25,6 @@ local loopConn = nil
 
 local function vp() return workspace.CurrentCamera.ViewportSize end
 local function targetX() return vp().X - W - MARGIN_X end
-
 local function lerp(a, b, t) return a + (b - a) * t end
 
 local function newSquare(pos, size, color, filled, thickness, zi)
@@ -97,7 +95,6 @@ local function startLoop()
     if loopConn then return end
     loopConn = RunService.RenderStepped:Connect(function(dt)
         local toRemove = {}
-
         for i = #pool, 1, -1 do
             local n = pool[i]
             n.cx = lerp(n.cx, targetX(), math.min(dt * SLIDE_SPD, 1))
@@ -122,11 +119,6 @@ local function startLoop()
             table.remove(pool, i)
         end
 
-        -- Stack from bottom
-        for index, n in ipairs(pool) do
-            n.ty = vp().Y - MARGIN_Y - ( (#pool - index + 1) * (H + PAD) )
-        end
-
         if #pool == 0 then
             loopConn:Disconnect()
             loopConn = nil
@@ -140,12 +132,16 @@ local function Notify(title, message, duration, notifType)
     title     = tostring(title or "Notification")
     message   = tostring(message or "")
 
-    local accentColor = C.accent[notifType] or C.accent.info
+    -- remove old notification immediately
+    for _, n in ipairs(pool) do
+        n.phase = "out"
+    end
+
     local ix = targetX() + OFFSCREEN
     local iy = vp().Y - MARGIN_Y - H
 
     local d = spawnDraw(ix, iy)
-    d.accent.Color = accentColor
+    d.accent.Color = C.accent[notifType] or C.accent.info
     d.title.Text   = title
     d.msg.Text     = message
 
