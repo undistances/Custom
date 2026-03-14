@@ -26,7 +26,7 @@ local loopConn = nil
 
 local function vp() return workspace.CurrentCamera.ViewportSize end
 local function targetX() return vp().X - W - MARGIN_X end
-local function targetY(slot) return vp().Y - MARGIN_Y - ((#pool - slot + 1) * (H + PAD)) end
+
 local function lerp(a, b, t) return a + (b - a) * t end
 
 local function newSquare(pos, size, color, filled, thickness, zi)
@@ -122,8 +122,9 @@ local function startLoop()
             table.remove(pool, i)
         end
 
-        for j, m in ipairs(pool) do
-            m.ty = targetY(j)
+        -- Stack from bottom
+        for index, n in ipairs(pool) do
+            n.ty = vp().Y - MARGIN_Y - ( (#pool - index + 1) * (H + PAD) )
         end
 
         if #pool == 0 then
@@ -141,7 +142,7 @@ local function Notify(title, message, duration, notifType)
 
     local accentColor = C.accent[notifType] or C.accent.info
     local ix = targetX() + OFFSCREEN
-    local iy = targetY(#pool + 1)
+    local iy = vp().Y - MARGIN_Y - H
 
     local d = spawnDraw(ix, iy)
     d.accent.Color = accentColor
