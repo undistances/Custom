@@ -2,6 +2,9 @@ local RunService = game:GetService("RunService")
 
 local W, H = 290, 68
 local MARGIN_X, MARGIN_Y = 18, 18
+local OFFSCREEN = 360
+local SLIDE_SPD = 12
+local FADE_SPD = 2
 local ACCENT_W = 3
 
 local C = {
@@ -17,11 +20,12 @@ local C = {
     }
 }
 
-local currentNotif = nil
+local pool = {}
+local loopConn = nil
 
 local function vp() return workspace.CurrentCamera.ViewportSize end
 local function targetX() return vp().X - W - MARGIN_X end
-local function targetY() return vp().Y - MARGIN_Y - H end
+local function lerp(a, b, t) return a + (b - a) * t end
 
 local function newSquare(pos, size, color, filled, thickness, zi)
     local s = Drawing.new("Square")
@@ -31,7 +35,7 @@ local function newSquare(pos, size, color, filled, thickness, zi)
     s.Color = color
     s.Filled = filled
     s.Thickness = thickness or 1
-    s.Transparency = 1
+    s.Transparency = 0.001
     s.ZIndex = zi or 10
     return s
 end
@@ -45,19 +49,81 @@ local function newText(pos, text, size, color, zi)
     t.Color = color
     t.Font = Drawing.Fonts.UI
     t.Outline = false
-    t.Transparency = 1
+    t.Transparency = 0.001
     t.ZIndex = zi or 12
     return t
 end
 
+local function spawnDraw(x, y)
+    local p = Vector2.new(x, y)
+    local sz = Vector2.new(W, H)
+    return {
+        bg     = newSquare(p, sz, C.bg, true, 1, 10),
+        border = newSquare(p, sz, C.border, false, 1, 11),
+        accent = newSquare(p, Vector2.new(ACCENT_W, H), C.border, true, 1, 12),
+        title  = newText(Vector2.new(x + 12, y + 14), "", 15, C.title, 13),
+        msg    = newText(Vector2.new(x + 12, y + 36), "", 13, C.msg, 13)
+    }
+end
+
+local function setAlpha(d, a)
+    local t = math.clamp(a, 0.001, 0.999)
+    d.bg.Transparency     = t
+    d.border.Transparency = t
+    d.accent.Transparency = t
+    d.title.Transparency  = t
+    d.msg.Transparency    = t
+end
+
+local function setPos(d, x, y)
+    d.bg.Position     = Vector2.new(x, y)
+    d.border.Position = Vector2.new(x, y)
+    d.accent.Position = Vector2.new(x, y)
+    d.title.Position  = Vector2.new(x + 12, y + 14)
+    d.msg.Position    = Vector2.new(x + 12, y + 36)
+end
+
 local function destroy(d)
-    if d then
-        d.bg:Remove()
-        d.border:Remove()
-        d.accent:Remove()
-        d.title:Remove()
-        d.msg:Remove()
-    end
+    d.bg:Remove()
+    d.border:Remove()
+    d.accent:Remove()
+    d.title:Remove()
+    d.msg:Remove()
+end
+
+local function startLoop()
+    if loopConn then return end
+    loopConn = RunService.RenderStepped:Connect(function(dt)
+        local toRemove = {}
+        for i = #pool, 1, -1 do
+            local n = pool[i]
+            n.cx = lerp(n.cx, targetX(), math.min(dt * SLIDE_SPD, 1))
+            n.cy = lerp(n.cy, n.ty, math.min(dt * SLIDE_SPD, 1))
+
+            if n.phase == "in" then
+                n.alpha = math.min(n.alpha + dt * FADE_SPD, 1)
+                if n.alpha >= 0.99 then n.phase = "hold" end
+            elseif n.phase == "out" then
+                n.alpha = math.max(n.alpha - dt * FADE_SPD, 0)
+                if n.alpha <= 0.01 then
+                    toRemove[#toRemove + 1] = i
+                end
+            end
+
+            setAlpha(n.draw, n.alpha)
+            setPos(n.draw, n.cx, n.cy)
+        end
+
+        for _, i in ipairs(toRemove) do
+            destroy(pool[i].draw)
+            table.remove(pool, i)
+        end
+
+        if #pool == 0 then
+            loopConn:Disconnect()
+            loopConn = nil
+        end
+    end)
 end
 
 local function Notify(title, message, duration, notifType)
@@ -66,30 +132,37 @@ local function Notify(title, message, duration, notifType)
     title     = tostring(title or "Notification")
     message   = tostring(message or "")
 
-    -- remove the old notification immediately
-    if currentNotif then
-        destroy(currentNotif)
-        currentNotif = nil
+    -- immediately destroy all existing notifications
+    for _, n in ipairs(pool) do
+        destroy(n.draw)
     end
+    pool = {}
 
-    local x = targetX()
-    local y = targetY()
+    local ix = targetX() + OFFSCREEN
+    local iy = vp().Y - MARGIN_Y - H
 
-    local d = {
-        bg     = newSquare(Vector2.new(x, y), Vector2.new(W, H), C.bg, true),
-        border = newSquare(Vector2.new(x, y), Vector2.new(W, H), C.border, false),
-        accent = newSquare(Vector2.new(x, y), Vector2.new(ACCENT_W, H), C.accent[notifType] or C.accent.info, true),
-        title  = newText(Vector2.new(x + 12, y + 14), title, 15, C.title),
-        msg    = newText(Vector2.new(x + 12, y + 36), message, 13, C.msg)
+    local d = spawnDraw(ix, iy)
+    d.accent.Color = C.accent[notifType] or C.accent.info
+    d.title.Text   = title
+    d.msg.Text     = message
+
+    local n = {
+        draw  = d,
+        cx    = ix,
+        cy    = iy,
+        ty    = iy,
+        alpha = 0,
+        phase = "in"
     }
 
-    currentNotif = d
+    table.insert(pool, n)
+    startLoop()
 
     task.spawn(function()
         task.wait(duration)
-        destroy(d)
-        if currentNotif == d then
-            currentNotif = nil
+        if n and n.phase ~= "out" then
+            n.phase = "out"
+            startLoop()
         end
     end)
 end
